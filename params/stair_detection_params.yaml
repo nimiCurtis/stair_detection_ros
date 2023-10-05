@@ -1,0 +1,14 @@
+/stair_detection_node:
+  ros__parameters:
+    general:
+      camera_topic: '/zedm/zed_node/rgb/image_rect_color'
+      detection_topic_img: '/zion/stair_detection/detection_image'
+      detection_topic_data: '/zion/stair_detection/detection'
+
+    model: 
+      device: cuda # cuda | cpu
+      model_path: '/home/nimrod/ros2_ws/src/stair_detection_pkg/stair_detection_ros/models/best.pt' # relative path from env_clf_ros dir to the models dir
+
+/**:
+    ros__parameters:
+      allNodeCanSee: True
