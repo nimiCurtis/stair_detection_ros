@@ -9,28 +9,22 @@ from launch.substitutions import TextSubstitution, LaunchConfiguration
 from launch_ros.actions import Node
 from launch_ros.descriptions import ComposableNode
 
-def generate_launch_description():
 
-    # get parameters from yaml    
-    config = os.path.join(
+def generate_launch_description():
+    config_rviz2 = os.path.join(
         get_package_share_directory('stair_detection_ros'),
-        'params',
-        'stair_detection_params.yaml'
+        'rviz2',
+        'stair_detection.rviz')
+    
+    launch_rviz = Node(
+            package='rviz2',
+            namespace='',
+            executable='rviz2',
+            name='rviz2',
+            arguments=[["-d"], [config_rviz2] ]
         )
     
-
-    
-    # set launch os stair detector
-    launch_stair_detection =   Node(
-            package='stair_detection_ros',
-            executable='stair_detection_node',
-            output='screen',
-            parameters=[config]
-            )
-    
-
-    # return launch file
+        # return launch file
     return LaunchDescription([
-        launch_stair_detection
+        launch_rviz
     ])
-    
