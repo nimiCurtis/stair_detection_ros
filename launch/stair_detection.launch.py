@@ -17,9 +17,7 @@ def generate_launch_description():
         'params',
         'stair_detection_params.yaml'
         )
-    
 
-    
     # set launch os stair detector
     launch_stair_detection =   Node(
             package='stair_detection_ros',

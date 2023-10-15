@@ -13,6 +13,8 @@ from sensor_msgs.msg import Image
 from std_msgs.msg import String, Float32MultiArray, MultiArrayDimension
 from vision_msgs.msg import Detection2D, Detection2DArray, ObjectHypothesis 
 from ultralytics import YOLO
+from ament_index_python.packages import get_package_share_directory
+
 
 class StairDetectorNode(Node):
     """StairDetectorNode is a ROS2 node responsible for detecting stair ascending and descending 
@@ -57,6 +59,7 @@ class StairDetectorNode(Node):
                                                  params['detection_topic_img'],
                                                  10)
         
+        # load detection model
         device, model_path = params["device"], params["model_path"]
         self.model = self.load_model(model_path,device)
 
@@ -69,7 +72,7 @@ class StairDetectorNode(Node):
         """
 
         self.get_logger().info('Parameters: ')
-
+        
         camera_topic = self.declare_parameter('camera_topic', '/zedm/zed_node/rgb/image_rect_color') ## <<< continue
         camera_topic = self.get_parameter('camera_topic').get_parameter_value().string_value
         self.get_logger().info('camera_topic: %s' % camera_topic)
@@ -86,8 +89,14 @@ class StairDetectorNode(Node):
         device = self.get_parameter('model.device').get_parameter_value().string_value
         self.get_logger().info('device: %s' % device)
         
-        model_path = self.declare_parameter('model.model_path', '/home/nimrod/ros2_ws/src/stair_detection_pkg/stair_detection_ros/models/yolov8n.pt')
-        model_path = self.get_parameter('model.model_path').get_parameter_value().string_value
+        model_name = self.declare_parameter('model.model_path', 'best.pt')
+        model_name = self.get_parameter('model.model_path').get_parameter_value().string_value
+        model_path = os.path.join(
+            get_package_share_directory('stair_detection_ros'),
+            'models',
+            model_name
+        )
+        
         self.get_logger().info('model_path: %s' % model_path)
         
         params_dic = {
