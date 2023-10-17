@@ -26,7 +26,8 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'stair_detection_node = stair_detection_ros.stair_detection_node:main'
+            'stair_detection_node = stair_detection_ros.stair_detection_node:main',
+            'stair_detection_fused_node = stair_detection_ros.stair_detection_fused_node:main'
         ],
     },
 )

@@ -13,6 +13,7 @@ from sensor_msgs.msg import Image
 from std_msgs.msg import String, Float32MultiArray, MultiArrayDimension
 from vision_msgs.msg import Detection2D, Detection2DArray, ObjectHypothesis 
 from ultralytics import YOLO
+from ultralytics.engine.results import Results, Boxes
 from ament_index_python.packages import get_package_share_directory
 
 
@@ -120,7 +121,7 @@ class StairDetectorNode(Node):
         # publish image with bbox
         self.detection_img_pub.publish(img_msg)
 
-    def load_model(self, model_path:String, device:String):
+    def load_model(self, model_path:String, device:String)->YOLO:
         """
         Loads the YOLO model from the specified path and transfers it to the desired device.
         
@@ -136,30 +137,29 @@ class StairDetectorNode(Node):
         model = YOLO(model_path).to(device)
         return model
 
-    def update_detection(self, results, frame):
+    def update_detection(self, results:Results, frame):
         """
         Updates the input frame with bounding boxes around detected objects.
         
         :param results: Detection results from the YOLO model
-        :type results: list
+        :type results: Results object
         :param frame: Input image/frame to be annotated
         :type frame: ndarray
         :return: Annotated frame with bounding boxes
         :rtype: ndarray
         """
-        # Iterate through the detection results
-        for r in results:
-            boxes = r.boxes
-            # Process each detected bounding box
-            for box in boxes:
-                # Extract bounding box coordinates, confidence score, and class label
-                xyxy = box.xyxy.cpu().detach().numpy().copy()[0]
-                conf = box.conf.cpu().detach().numpy().copy()[0]
-                cls = box.cls.cpu().detach().numpy().copy()[0]
-                cls_name = r.names[cls]
 
-                # Annotate the frame with the bounding box
-                frame = self.plot_bbox(frame, xyxy, cls_name, conf)
+        boxes = results.boxes
+        # Process each detected bounding box
+        for box in boxes:
+            # Extract bounding box coordinates, confidence score, and class label
+            xyxy = box.xyxy.cpu().detach().numpy().copy()[0]
+            conf = box.conf.cpu().detach().numpy().copy()[0]
+            cls = box.cls.cpu().detach().numpy().copy()[0]
+            cls_name = results.names[cls]
+
+            # Annotate the frame with the bounding box
+            frame = self.plot_bbox(frame, xyxy, cls_name, conf)
                     
         return frame
     
@@ -213,9 +213,10 @@ class StairDetectorNode(Node):
         """
         # Predict objects in the frame using the model
         results = self.model.predict(source=frame,
-                                    verbose=True,
-                                    show=False)
-        return results
+                                    verbose=False,
+                                    show=False,
+                                    conf=0.75)
+        return results[0]
 
     def image_callback(self, data:Image):
         """
