@@ -111,16 +111,21 @@ class StairDetectorNode(Node):
         
         return params_dic
 
-    def publish(self, img_msg:Image):
+    def publish(self, img_msg:Image, det_msg:Detection2D()):
         """
-        Publishes the image message containing detected objects with bounding boxes.
+        Publishes the image message containing detected objects with bounding boxes and the detection2d data.
         
         :param img_msg: Image message containing detections
         :type img_msg: Image
+        :param det_msg: Detection2D message containing detection data
+        :type det_msg: Detection2D
         """
         
         # publish image with bbox
         self.detection_img_pub.publish(img_msg)
+        
+        # publish detection data
+        self.detection_data_pub(det_msg)
 
     def load_model(self, model_path:String, device:String)->YOLO:
         """
@@ -227,10 +232,41 @@ class StairDetectorNode(Node):
                                     conf=0.75)
         return results[0]
 
-    def set_detection2d_msg(self,conf, cls_name, xyxy, header):
+    def set_detection2d_msg(self, conf=None, cls_name=None, xyxy=None, header=None):
+        """
+        Constructs a Detection2D message using the given detection parameters.
+        
+        :param conf: Confidence score of the detected object
+        :type conf: float
+        :param cls_name: Name/ID of the detected class
+        :type cls_name: str or int
+        :param xyxy: Bounding box coordinates in the format [x1, y1, x2, y2]
+        :type xyxy: list or ndarray
+        :param header: Header information (e.g., timestamp, frame_id) for the message
+        :type header: Header or similar datatype
+        :return: Constructed Detection2D message with the given detection parameters
+        :rtype: Detection2D
+        """
+        
+        # Initialize a Detection2D object
         detection = Detection2D()
-        detection.header = header
-        detection.bbox.size_x = 
+        # Set the header information
+        if header is not None: detection.header = header 
+        
+        # Calculate and set the bounding box dimensions
+        if xyxy is not None:
+            detection.bbox.size_x = int(abs(xyxy[0] - xyxy[2]))
+            detection.bbox.size_y = int(abs(xyxy[1] - xyxy[3]))
+        
+        # Initialize an ObjectHypothesis object to store detected class and its confidence
+        if (conf is not None) and (cls_name is not None):
+            hypo = ObjectHypothesis()
+            hypo.id = cls_name
+            hypo.score = float(conf)
+            # Add the hypothesis to the Detection2D message
+            detection.results.append(hypo)
+        
+        return detection
 
 
     def image_callback(self, data:Image):
@@ -247,11 +283,13 @@ class StairDetectorNode(Node):
         result = self.predict(cv_img)
         
         # get the detection data
-        conf, cls_name, xyxy = self.get_detection(results=result)
-        
-        # Annotate the image with bounding boxes
-        cv_img_with_bbox = self.plot_bbox(cv_img,xyxy,cls_name,conf)
-        
+        if result.probs is not None:
+            conf, cls_name, xyxy = self.get_detection(results=result)
+            # Annotate the image with bounding boxes
+            cv_img_with_bbox = self.plot_bbox(cv_img,xyxy,cls_name,conf)
+        else:
+            cv_img_with_bbox = cv_img
+
         # Convert the annotated OpenCV image to ROS image message and to Detection2D message
         header = Header()
         header.frame_id = data.header.frame_id
@@ -260,8 +298,8 @@ class StairDetectorNode(Node):
         img_msg = self.cv_bridge.cv2_to_imgmsg(cv_img_with_bbox, header=header)
         detection_msg = self.set_detection2d_msg(conf, cls_name, xyxy, header=header)
         
-        # Publish the annotated image
-        self.publish(img_msg)
+        # Publish the annotated image adn the detection data
+        self.publish(img_msg,detection_msg)
 
 
 def main(args=None):
