@@ -6,16 +6,17 @@ import cv2
 from cv_bridge import CvBridge
 from rclpy.node import Node
 from rclpy.exceptions import ROSInterruptException
+from rclpy.executors import SingleThreadedExecutor
+
 import numpy as np
 import torch
 from omegaconf import OmegaConf
 from sensor_msgs.msg import Image
-from std_msgs.msg import String, Float32MultiArray, MultiArrayDimension
-from vision_msgs.msg import Detection2D, Detection2DArray, ObjectHypothesis 
+from std_msgs.msg import String, Header
+from vision_msgs.msg import Detection2D, ObjectHypothesis 
 from ultralytics import YOLO
 from ultralytics.engine.results import Results, Boxes
 from ament_index_python.packages import get_package_share_directory
-
 
 class StairDetectorNode(Node):
     """StairDetectorNode is a ROS2 node responsible for detecting stair ascending and descending 
@@ -137,17 +138,22 @@ class StairDetectorNode(Node):
         model = YOLO(model_path).to(device)
         return model
 
-    def update_detection(self, results:Results, frame):
+    def get_detection(self, results:Results):
         """
-        Updates the input frame with bounding boxes around detected objects.
-        
+        Returns the confidence, class name, and the bounding box coordinates 
+        of the box with the highest confidence from the detection results.
+
         :param results: Detection results from the YOLO model
         :type results: Results object
-        :param frame: Input image/frame to be annotated
+        :param frame: Input image/frame (not used in this modified function but kept for consistency)
         :type frame: ndarray
-        :return: Annotated frame with bounding boxes
-        :rtype: ndarray
+        :return: conf, cls_name, xyxy of the box with the highest confidence
+        :rtype: tuple
         """
+
+        max_conf = float('-inf')  # Initialize with a very low value
+        best_cls_name = None
+        best_xyxy = None
 
         boxes = results.boxes
         # Process each detected bounding box
@@ -158,10 +164,13 @@ class StairDetectorNode(Node):
             cls = box.cls.cpu().detach().numpy().copy()[0]
             cls_name = results.names[cls]
 
-            # Annotate the frame with the bounding box
-            frame = self.plot_bbox(frame, xyxy, cls_name, conf)
-                    
-        return frame
+            # Check if the current box's confidence is the highest so far
+            if conf > max_conf:
+                max_conf = conf
+                best_cls_name = cls_name
+                best_xyxy = xyxy
+
+        return max_conf, best_cls_name, best_xyxy
     
     def plot_bbox(self,frame,xyxy,cls_name,conf):
         """
@@ -218,6 +227,12 @@ class StairDetectorNode(Node):
                                     conf=0.75)
         return results[0]
 
+    def set_detection2d_msg(self,conf, cls_name, xyxy, header):
+        detection = Detection2D()
+        detection.header = header
+        detection.bbox.size_x = 
+
+
     def image_callback(self, data:Image):
         """
         Callback function for image data. Detects objects in the image, annotates it, and publishes the annotated image.
@@ -228,38 +243,60 @@ class StairDetectorNode(Node):
         
         # Convert ROS image message to OpenCV format
         cv_img = self.cv_bridge.imgmsg_to_cv2(data, desired_encoding="bgr8")
-        
         # Predict objects in the image
         result = self.predict(cv_img)
         
-        # Annotate the image with bounding boxes
-        cv_img_with_bbox = self.update_detection(results=result, frame=cv_img)
+        # get the detection data
+        conf, cls_name, xyxy = self.get_detection(results=result)
         
-        # Convert the annotated OpenCV image to ROS image message
-        img_msg = self.cv_bridge.cv2_to_imgmsg(cv_img_with_bbox)
+        # Annotate the image with bounding boxes
+        cv_img_with_bbox = self.plot_bbox(cv_img,xyxy,cls_name,conf)
+        
+        # Convert the annotated OpenCV image to ROS image message and to Detection2D message
+        header = Header()
+        header.frame_id = data.header.frame_id
+        header.stamp = self.get_clock().now().to_msg()
+        
+        img_msg = self.cv_bridge.cv2_to_imgmsg(cv_img_with_bbox, header=header)
+        detection_msg = self.set_detection2d_msg(conf, cls_name, xyxy, header=header)
         
         # Publish the annotated image
         self.publish(img_msg)
 
 
-def main():
+def main(args=None):
 
+    # init node
+    rclpy.init(args=args)
+    detect_node = StairDetectorNode()
+    
+    # Create a SingleThreadedExecutor
+    executor = SingleThreadedExecutor()
+    # Add the node to the executor
+    executor.add_node(detect_node)
+    
     try:
-        rclpy.init()
-        running_node = StairDetectorNode()
-        rclpy.spin(running_node)
+        # Spin the executor
+        executor.spin()
 
     except KeyboardInterrupt:
-        running_node.get_logger().info('Keyboard interrupt, shutting down.\n')
-        running_node.destroy_node()
+        detect_node.get_logger().info('Keyboard interrupt, shutting down.\n')
+        detect_node.destroy_node()
+        # Shutdown
+        executor.shutdown()
         rclpy.shutdown()
 
     except ROSInterruptException as error:
         print(error)
-        running_node.get_logger().error('Caught Exception error, shutting down.\n')
-        running_node.destroy_node()
+        detect_node.get_logger().error('Caught Exception error, shutting down.\n')
+        detect_node.destroy_node()
+        # Shutdown
+        executor.shutdown()
         rclpy.shutdown()
-        pass
+    
+    finally:
+        executor.shutdown()
+    rclpy.shutdown()
 
 if __name__ == '__main__':
     main()
