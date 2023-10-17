@@ -4,7 +4,7 @@ import os
 import rclpy
 import cv2
 from cv_bridge import CvBridge
-from rclpy.node import Node
+from rclpy.node import Node, QoSProfile
 from rclpy.exceptions import ROSInterruptException
 from rclpy.executors import SingleThreadedExecutor
 
@@ -13,7 +13,7 @@ import torch
 from omegaconf import OmegaConf
 from sensor_msgs.msg import Image
 from std_msgs.msg import String, Header
-from vision_msgs.msg import Detection2D, ObjectHypothesis 
+from vision_msgs.msg import Detection2D, ObjectHypothesisWithPose 
 from ultralytics import YOLO
 from ultralytics.engine.results import Results, Boxes
 from ament_index_python.packages import get_package_share_directory
@@ -52,6 +52,8 @@ class StairDetectorNode(Node):
         self.image_sub  = self.create_subscription(Image, 
                                                    params['camera_topic'], 
                                                    self.image_callback, 10)
+
+        qos = QoSProfile()
         
         self.detection_data_pub = self.create_publisher(Detection2D,
                                                  params['detection_topic_data'],
@@ -125,7 +127,7 @@ class StairDetectorNode(Node):
         self.detection_img_pub.publish(img_msg)
         
         # publish detection data
-        self.detection_data_pub(det_msg)
+        self.detection_data_pub.publish(det_msg)
 
     def load_model(self, model_path:String, device:String)->YOLO:
         """
@@ -156,11 +158,12 @@ class StairDetectorNode(Node):
         :rtype: tuple
         """
 
-        max_conf = float('-inf')  # Initialize with a very low value
+        max_conf = 0.  # Initialize with a very low value
+        best_cls = None
         best_cls_name = None
         best_xyxy = None
-
         boxes = results.boxes
+        
         # Process each detected bounding box
         for box in boxes:
             # Extract bounding box coordinates, confidence score, and class label
@@ -172,10 +175,11 @@ class StairDetectorNode(Node):
             # Check if the current box's confidence is the highest so far
             if conf > max_conf:
                 max_conf = conf
+                best_cls = cls
                 best_cls_name = cls_name
                 best_xyxy = xyxy
 
-        return max_conf, best_cls_name, best_xyxy
+        return max_conf, best_cls, best_cls_name, best_xyxy
     
     def plot_bbox(self,frame,xyxy,cls_name,conf):
         """
@@ -229,10 +233,10 @@ class StairDetectorNode(Node):
         results = self.model.predict(source=frame,
                                     verbose=False,
                                     show=False,
-                                    conf=0.75)
+                                    conf=0.2)
         return results[0]
 
-    def set_detection2d_msg(self, conf=None, cls_name=None, xyxy=None, header=None):
+    def set_detection2d_msg(self, conf=0., cls_id=None, xyxy=None, header=None):
         """
         Constructs a Detection2D message using the given detection parameters.
         
@@ -252,16 +256,16 @@ class StairDetectorNode(Node):
         detection = Detection2D()
         # Set the header information
         if header is not None: detection.header = header 
-        
+
         # Calculate and set the bounding box dimensions
         if xyxy is not None:
-            detection.bbox.size_x = int(abs(xyxy[0] - xyxy[2]))
-            detection.bbox.size_y = int(abs(xyxy[1] - xyxy[3]))
+            detection.bbox.size_x = float(abs(xyxy[0] - xyxy[2]))
+            detection.bbox.size_y = float(abs(xyxy[1] - xyxy[3]))
         
         # Initialize an ObjectHypothesis object to store detected class and its confidence
-        if (conf is not None) and (cls_name is not None):
-            hypo = ObjectHypothesis()
-            hypo.id = cls_name
+        if (conf!=0.) and (cls_id is not None):
+            hypo = ObjectHypothesisWithPose()
+            hypo.id = str(cls_id)
             hypo.score = float(conf)
             # Add the hypothesis to the Detection2D message
             detection.results.append(hypo)
@@ -283,9 +287,10 @@ class StairDetectorNode(Node):
         result = self.predict(cv_img)
         
         # get the detection data
-        if result.probs is not None:
-            conf, cls_name, xyxy = self.get_detection(results=result)
-            # Annotate the image with bounding boxes
+        conf, cls_id, cls_name, xyxy = self.get_detection(results=result)
+        # Annotate the image with bounding boxes
+        
+        if cls_id is not None:
             cv_img_with_bbox = self.plot_bbox(cv_img,xyxy,cls_name,conf)
         else:
             cv_img_with_bbox = cv_img
@@ -295,7 +300,7 @@ class StairDetectorNode(Node):
         header.frame_id = data.header.frame_id
         header.stamp = self.get_clock().now().to_msg()
         
-        img_msg = self.cv_bridge.cv2_to_imgmsg(cv_img_with_bbox, header=header)
+        img_msg = self.cv_bridge.cv2_to_imgmsg(cv_img_with_bbox)
         detection_msg = self.set_detection2d_msg(conf, cls_name, xyxy, header=header)
         
         # Publish the annotated image adn the detection data
