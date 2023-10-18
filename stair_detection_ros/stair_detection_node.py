@@ -6,16 +6,14 @@ import cv2
 from cv_bridge import CvBridge
 from rclpy.node import Node, QoSProfile
 from rclpy.exceptions import ROSInterruptException
-from rclpy.executors import SingleThreadedExecutor
+from rclpy.executors import SingleThreadedExecutor, ExternalShutdownException
 
 import numpy as np
-import torch
-from omegaconf import OmegaConf
 from sensor_msgs.msg import Image
 from std_msgs.msg import String, Header
 from vision_msgs.msg import Detection2D, ObjectHypothesisWithPose 
 from ultralytics import YOLO
-from ultralytics.engine.results import Results, Boxes
+from ultralytics.engine.results import Results
 from ament_index_python.packages import get_package_share_directory
 
 class StairDetectorNode(Node):
@@ -52,8 +50,8 @@ class StairDetectorNode(Node):
         self.image_sub  = self.create_subscription(Image, 
                                                    params['camera_topic'], 
                                                    self.image_callback, 10)
-
-        qos = QoSProfile()
+        
+        # qos = QoSProfile()
         
         self.detection_data_pub = self.create_publisher(Detection2D,
                                                  params['detection_topic_data'],
@@ -66,6 +64,8 @@ class StairDetectorNode(Node):
         # load detection model
         device, model_path = params["device"], params["model_path"]
         self.model = self.load_model(model_path,device)
+        
+        self.conf = params["conf"]
 
     def init_params(self):
         """
@@ -100,15 +100,19 @@ class StairDetectorNode(Node):
             'models',
             model_name
         )
-        
         self.get_logger().info('model_path: %s' % model_path)
-        
+
+        conf = self.declare_parameter('model.conf', 0.75)
+        conf = self.get_parameter('model.conf').get_parameter_value().double_value
+        self.get_logger().info('confidence threshold: %s' % conf)
+                
         params_dic = {
             'camera_topic': camera_topic,
             'detection_topic_data': detection_topic_data,
             'detection_topic_img': detection_topic_img,
             'device': device,
-            'model_path': model_path
+            'model_path': model_path,
+            'conf': conf
         }
         
         return params_dic
@@ -220,20 +224,22 @@ class StairDetectorNode(Node):
 
         return frame
 
-    def predict(self, frame):
+    def predict(self, frame, conf=0.75):
         """
         Predicts objects in the given frame using the loaded YOLO model.
         
         :param frame: Image/frame for object detection
         :type frame: ndarray
-        :return: Detection results from the YOLO model
-        :rtype: list
+        :param conf: prediction confidence threshold
+        :type conf: float
+        :return: Detection result from the YOLO model
+        :rtype: Results object
         """
         # Predict objects in the frame using the model
         results = self.model.predict(source=frame,
                                     verbose=False,
                                     show=False,
-                                    conf=0.2)
+                                    conf=conf)
         return results[0]
 
     def set_detection2d_msg(self, conf=0., cls_id=None, xyxy=None, header=None):
@@ -283,8 +289,9 @@ class StairDetectorNode(Node):
         
         # Convert ROS image message to OpenCV format
         cv_img = self.cv_bridge.imgmsg_to_cv2(data, desired_encoding="bgr8")
+        
         # Predict objects in the image
-        result = self.predict(cv_img)
+        result = self.predict(cv_img, conf=self.conf)
         
         # get the detection data
         conf, cls_id, cls_name, xyxy = self.get_detection(results=result)
@@ -322,24 +329,22 @@ def main(args=None):
         # Spin the executor
         executor.spin()
 
-    except KeyboardInterrupt:
-        detect_node.get_logger().info('Keyboard interrupt, shutting down.\n')
-        detect_node.destroy_node()
-        # Shutdown
-        executor.shutdown()
-        rclpy.shutdown()
+    except KeyboardInterrupt as error:
+        print(error)
+        detect_node.get_logger().warning('KeyboardInterrupt error, shutting down.\n')
 
     except ROSInterruptException as error:
         print(error)
-        detect_node.get_logger().error('Caught Exception error, shutting down.\n')
-        detect_node.destroy_node()
-        # Shutdown
-        executor.shutdown()
-        rclpy.shutdown()
+        detect_node.get_logger().warning('ROSInterruptException error, shutting down.\n')
+
+    except ExternalShutdownException as error:
+        print(error)
+        detect_node.get_logger().warning('ExternalShutdownException error, shutting down.\n')
     
     finally:
+        detect_node.destroy_node()
         executor.shutdown()
-    rclpy.shutdown()
+        rclpy.try_shutdown()
 
 if __name__ == '__main__':
     main()
