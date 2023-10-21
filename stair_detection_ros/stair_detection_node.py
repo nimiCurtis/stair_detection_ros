@@ -62,8 +62,8 @@ class StairDetectorNode(Node):
                                                  10)
         
         # load detection model
-        device, model_path = params["device"], params["model_path"]
-        self.model = self.load_model(model_path,device)
+        device, model_path, use_trt = params["device"], params["model_path"], params["use_trt"]
+        self.model = self.load_model(model_path,device,trt=use_trt)
         
         self.conf = params["conf"]
 
@@ -93,8 +93,15 @@ class StairDetectorNode(Node):
         device = self.get_parameter('model.device').get_parameter_value().string_value
         self.get_logger().info('device: %s' % device)
         
-        model_name = self.declare_parameter('model.model_path', 'best.pt')
+        model_name = self.declare_parameter('model.model_path', 'best')
         model_name = self.get_parameter('model.model_path').get_parameter_value().string_value
+        
+        use_trt = self.declare_parameter('model.trt', False)
+        use_trt = self.get_parameter('model.trt').get_parameter_value().bool_value
+        self.get_logger().info('trt: %s' % use_trt)
+
+        
+        model_name = model_name +'.engine' if use_trt else model_name +'.pt' 
         model_path = os.path.join(
             get_package_share_directory('stair_detection_ros'),
             'models',
@@ -105,14 +112,15 @@ class StairDetectorNode(Node):
         conf = self.declare_parameter('model.conf', 0.75)
         conf = self.get_parameter('model.conf').get_parameter_value().double_value
         self.get_logger().info('confidence threshold: %s' % conf)
-                
+        
         params_dic = {
             'camera_topic': camera_topic,
             'detection_topic_data': detection_topic_data,
             'detection_topic_img': detection_topic_img,
             'device': device,
             'model_path': model_path,
-            'conf': conf
+            'conf': conf,
+            'use_trt': use_trt
         }
         
         return params_dic
@@ -133,7 +141,7 @@ class StairDetectorNode(Node):
         # publish detection data
         self.detection_data_pub.publish(det_msg)
 
-    def load_model(self, model_path:String, device:String)->YOLO:
+    def load_model(self, model_path:String, device:String, trt:bool=True)->YOLO:
         """
         Loads the YOLO model from the specified path and transfers it to the desired device.
         
@@ -146,7 +154,12 @@ class StairDetectorNode(Node):
         """
         
         # Load the specified model architecture
-        model = YOLO(model_path).to(device)
+        model = YOLO(model_path, task='detect') 
+        
+        # if not tensorrt -> move model to device
+        if not trt:
+            model.to(device)
+            
         return model
 
     def get_detection(self, results:Results):
@@ -237,7 +250,8 @@ class StairDetectorNode(Node):
         """
         # Predict objects in the frame using the model
         results = self.model.predict(source=frame,
-                                    verbose=False,
+                                    imgsz=320,
+                                    verbose=True,
                                     show=False,
                                     conf=conf)
         return results[0]
