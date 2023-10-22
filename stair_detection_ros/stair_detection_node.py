@@ -346,14 +346,6 @@ def main(args=None):
     except KeyboardInterrupt as error:
         print(error)
         detect_node.get_logger().warning('KeyboardInterrupt error, shutting down.\n')
-
-    except ROSInterruptException as error:
-        print(error)
-        detect_node.get_logger().warning('ROSInterruptException error, shutting down.\n')
-
-    except ExternalShutdownException as error:
-        print(error)
-        detect_node.get_logger().warning('ExternalShutdownException error, shutting down.\n')
     
     finally:
         detect_node.destroy_node()
