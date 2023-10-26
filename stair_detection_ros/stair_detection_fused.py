@@ -10,7 +10,6 @@ from std_msgs.msg import Header
 from vision_msgs.msg import Detection2D
 from geometry_msgs.msg import PoseStamped
 #document https://github.com/ros2/message_filters/blob/rolling/index.rst
-from message_filters import ApproximateTimeSynchronizer, TimeSynchronizer, Subscriber
 import message_filters
 
 #Custom imports

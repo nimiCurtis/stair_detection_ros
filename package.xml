@@ -2,11 +2,13 @@
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
   <name>stair_detection_ros</name>
-  <version>0.0.0</version>
-  <description>TODO: Package description</description>
+  <version>0.1.0</version>
+  <description>Stair detection package using yolov8 for exo-skeleton system</description>
   <maintainer email="nimicu21@gmail.com">nimrod</maintainer>
-  <license>TODO: License declaration</license>
+  <license>Apache License 2.0</license>
+	<url type="repository">https://github.com/nimiCurtis/stair_detection_ros.git</url>
 
+<!-- Declares ROS2 package name that is required at build time -->
   <depend>rclpy</depend>
   <depend>zion_msgs</depend>
   <depend>vision_msgs</depend>

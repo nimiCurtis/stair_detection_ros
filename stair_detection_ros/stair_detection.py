@@ -43,7 +43,9 @@ class StairDetectorNode(Node):
     def __init__(self):
 
         super().__init__("stair_detection")  #Nodes name must be equal to the node
-        self.get_logger().info(f"{self.get_name()} is running")
+        self.get_logger().info(f"****************************************")
+        self.get_logger().info(f"      {self.get_name()} is running     ")
+        self.get_logger().info(f"****************************************")
 
         # load parameters
         params = self.init_params()
@@ -52,18 +54,18 @@ class StairDetectorNode(Node):
         self.cv_bridge = CvBridge()
 
         # init publishers and subscribers
-        imgSubQos = QoSProfile(10)
+        imgSubQos = QoSProfile(depth=10)
         self.image_sub  = self.create_subscription(Image, 
                                                 params['camera_topic'], 
                                                 self.image_callback,
                                                 imgSubQos)
         
-        detQos = QoSProfile(10)
+        detQos = QoSProfile(depth=10)
         self.detection_data_pub = self.create_publisher(Detection2D,
                                                 params['detection_topic_data'],
                                                 detQos)
-        
-        imgPubQos = QoSProfile(10)
+
+        imgPubQos = QoSProfile(depth=10)
         self.detection_img_pub = self.create_publisher(Image,
                                                 params['detection_topic_img'],
                                                 imgPubQos)
@@ -128,7 +130,9 @@ class StairDetectorNode(Node):
             'conf': conf,
             'use_trt': use_trt
         }
-        
+
+        self.get_logger().info(f"****************************************")
+
         return params_dic
 
     def load_model(self, model_path:String, device:String, trt:bool=True)->YOLO:

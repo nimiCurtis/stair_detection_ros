@@ -6,18 +6,22 @@ from launch_ros.actions import Node
 
 def generate_launch_description():
 
+    # define ns as robot name.
+    robot = 'zion'
+    
     # get parameters from yaml    
     config = os.path.join(
         get_package_share_directory('stair_detection_ros'),
-        'params',
-        'stair_detection_params.yaml'
+        'config',
+        'stair_detection.yaml'
         )
 
     # set launch os stair detector
     stair_detection_node =   Node(
             package='stair_detection_ros',
-            executable='stair_detection_node',
+            executable='stair_detection',
             output='screen',
+            namespace=robot,
             parameters=[config]
             )
 
