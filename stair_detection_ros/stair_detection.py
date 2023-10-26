@@ -1,20 +1,22 @@
 #!/usr/bin/env python3
 
+# Standard library imports
 import os
-import rclpy
-import cv2
-from cv_bridge import CvBridge
-from rclpy.node import Node, QoSProfile
-from rclpy.exceptions import ROSInterruptException
-from rclpy.executors import SingleThreadedExecutor, ExternalShutdownException
 
-import numpy as np
-from sensor_msgs.msg import Image
-from std_msgs.msg import String, Header
-from vision_msgs.msg import Detection2D, ObjectHypothesisWithPose 
+# Related third party imports
+import cv2
 from ultralytics import YOLO
 from ultralytics.engine.results import Results
+
+# ROS application/library specific imports
 from ament_index_python.packages import get_package_share_directory
+from cv_bridge import CvBridge
+import rclpy
+from rclpy.node import Node, QoSProfile
+from rclpy.executors import SingleThreadedExecutor
+from std_msgs.msg import String, Header
+from sensor_msgs.msg import Image
+from vision_msgs.msg import Detection2D, ObjectHypothesisWithPose 
 
 class StairDetectorNode(Node):
     """StairDetectorNode is a ROS2 node responsible for detecting stair ascending and descending 
@@ -26,6 +28,7 @@ class StairDetectorNode(Node):
         detection_data_pub: Publisher for detected object data.
         detection_img_pub: Publisher for images with annotated detections.
         model: Loaded YOLO object detection model.
+        conf: model confidence bootom threshold.
     
     Methods:
         - __init__: Initializes the node and its attributes.
@@ -39,32 +42,35 @@ class StairDetectorNode(Node):
 
     def __init__(self):
 
-        super().__init__("stair_detection_node") #Nodes name must be equal to the node
-        self.get_logger().info("NODE is running")
+        super().__init__("stair_detection")  #Nodes name must be equal to the node
+        self.get_logger().info(f"{self.get_name()} is running")
 
         # load parameters
         params = self.init_params()
         
+        # init cd bridge
         self.cv_bridge = CvBridge()
 
+        # init publishers and subscribers
+        imgSubQos = QoSProfile(10)
         self.image_sub  = self.create_subscription(Image, 
-                                                   params['camera_topic'], 
-                                                   self.image_callback, 10)
+                                                params['camera_topic'], 
+                                                self.image_callback,
+                                                imgSubQos)
         
-        # qos = QoSProfile()
-        
+        detQos = QoSProfile(10)
         self.detection_data_pub = self.create_publisher(Detection2D,
-                                                 params['detection_topic_data'],
-                                                 10)
+                                                params['detection_topic_data'],
+                                                detQos)
         
+        imgPubQos = QoSProfile(10)
         self.detection_img_pub = self.create_publisher(Image,
-                                                 params['detection_topic_img'],
-                                                 10)
+                                                params['detection_topic_img'],
+                                                imgPubQos)
         
         # load detection model
         device, model_path, use_trt = params["device"], params["model_path"], params["use_trt"]
         self.model = self.load_model(model_path,device,trt=use_trt)
-        
         self.conf = params["conf"]
 
     def init_params(self):
@@ -125,22 +131,6 @@ class StairDetectorNode(Node):
         
         return params_dic
 
-    def publish(self, img_msg:Image, det_msg:Detection2D()):
-        """
-        Publishes the image message containing detected objects with bounding boxes and the detection2d data.
-        
-        :param img_msg: Image message containing detections
-        :type img_msg: Image
-        :param det_msg: Detection2D message containing detection data
-        :type det_msg: Detection2D
-        """
-        
-        # publish image with bbox
-        self.detection_img_pub.publish(img_msg)
-        
-        # publish detection data
-        self.detection_data_pub.publish(det_msg)
-
     def load_model(self, model_path:String, device:String, trt:bool=True)->YOLO:
         """
         Loads the YOLO model from the specified path and transfers it to the desired device.
@@ -162,7 +152,60 @@ class StairDetectorNode(Node):
             
         return model
 
-    def get_detection(self, results:Results):
+    def image_callback(self, data:Image):
+        """
+        Callback function for image data. Detects objects in the image, annotates it, and publishes the annotated image.
+        
+        :param data: Image message received from the topic
+        :type data: Image
+        """
+        
+        # Convert ROS image message to OpenCV format
+        cv_img = self.cv_bridge.imgmsg_to_cv2(data, desired_encoding="bgr8")
+        
+        # Predict objects in the image
+        result = self.predict(cv_img, conf=self.conf)
+
+        # get the detection data
+        conf, cls_id, cls_name, xyxy = self.get_detection(results=result)
+        
+        # Annotate the image with bounding boxes
+        if cls_id is not None:
+            cv_img_with_bbox = self.plot_bbox(cv_img, xyxy, cls_name, conf)
+        else:
+            cv_img_with_bbox = cv_img
+        
+        # Convert the annotated OpenCV image to ROS image message and to Detection2D message
+        header = Header()
+        header.frame_id = data.header.frame_id
+        header.stamp = self.get_clock().now().to_msg()
+        
+        img_msg = self.cv_bridge.cv2_to_imgmsg(cv_img_with_bbox)
+        detection_msg = self.set_detection2d_msg(conf, cls_name, xyxy, header=header)
+        
+        # Publish the annotated image adn the detection data
+        self.publish(img_msg,detection_msg)
+
+    def predict(self, frame, conf=0.75)->Results:
+        """
+        Predicts objects in the given frame using the loaded YOLO model.
+        
+        :param frame: Image/frame for object detection
+        :type frame: ndarray
+        :param conf: prediction confidence threshold
+        :type conf: float
+        :return: Detection result from the YOLO model
+        :rtype: Results object
+        """
+        # Predict objects in the frame using the model
+        results = self.model.predict(source=frame,
+                                    imgsz=320,
+                                    verbose=True,
+                                    show=False,
+                                    conf=conf)
+        return results[0]
+
+    def get_detection(self, results:Results)->tuple:
         """
         Returns the confidence, class name, and the bounding box coordinates 
         of the box with the highest confidence from the detection results.
@@ -197,7 +240,7 @@ class StairDetectorNode(Node):
                 best_xyxy = xyxy
 
         return max_conf, best_cls, best_cls_name, best_xyxy
-    
+
     def plot_bbox(self,frame,xyxy,cls_name,conf):
         """
         Plot a bounding box of detection on an image
@@ -224,39 +267,23 @@ class StairDetectorNode(Node):
 
         label = "{} | {:.2f}%".format(cls_name, conf * 100)
 
-        cv2.rectangle(frame, (int(xyxy[0]), int(xyxy[1])), (int(xyxy[2]), int(xyxy[3])), color, 2)
+        cv2.rectangle(frame, (int(xyxy[0]), int(xyxy[1])),
+                    (int(xyxy[2]), int(xyxy[3])), color, 2)
 
         # Calculate width and height of the text box
         (w, h), _ = cv2.getTextSize(label, font, font_scale, font_thickness)
         
         # Draw a filled rectangle to put text inside
-        cv2.rectangle(frame, (int(xyxy[0]), int(xyxy[1]-30)), (int(xyxy[0]+w), int(xyxy[1])), background_color, -1)
+        cv2.rectangle(frame, (int(xyxy[0]), int(xyxy[1]-30)),
+                    (int(xyxy[0]+w), int(xyxy[1])), background_color, -1)
         
         # Put the text inside the rectangle
-        cv2.putText(frame, label, (int(xyxy[0]), int(xyxy[1]-5)), font, font_scale, text_color, font_thickness, cv2.LINE_AA)
+        cv2.putText(frame, label, (int(xyxy[0]), int(xyxy[1]-5)), font,
+                    font_scale, text_color, font_thickness, cv2.LINE_AA)
 
         return frame
 
-    def predict(self, frame, conf=0.75):
-        """
-        Predicts objects in the given frame using the loaded YOLO model.
-        
-        :param frame: Image/frame for object detection
-        :type frame: ndarray
-        :param conf: prediction confidence threshold
-        :type conf: float
-        :return: Detection result from the YOLO model
-        :rtype: Results object
-        """
-        # Predict objects in the frame using the model
-        results = self.model.predict(source=frame,
-                                    imgsz=320,
-                                    verbose=True,
-                                    show=False,
-                                    conf=conf)
-        return results[0]
-
-    def set_detection2d_msg(self, conf=0., cls_id=None, xyxy=None, header=None):
+    def set_detection2d_msg(self, conf=0., cls_id=None, xyxy=None, header=None)->Detection2D:
         """
         Constructs a Detection2D message using the given detection parameters.
         
@@ -292,50 +319,31 @@ class StairDetectorNode(Node):
         
         return detection
 
-
-    def image_callback(self, data:Image):
+    def publish(self, img_msg:Image, det_msg:Detection2D()):
         """
-        Callback function for image data. Detects objects in the image, annotates it, and publishes the annotated image.
+        Publishes the image message containing detected objects with bounding boxes and the detection2d data.
         
-        :param data: Image message received from the topic
-        :type data: Image
+        :param img_msg: Image message containing detections
+        :type img_msg: Image
+        :param det_msg: Detection2D message containing detection data
+        :type det_msg: Detection2D
         """
         
-        # Convert ROS image message to OpenCV format
-        cv_img = self.cv_bridge.imgmsg_to_cv2(data, desired_encoding="bgr8")
+        # publish image with bbox
+        self.detection_img_pub.publish(img_msg)
         
-        # Predict objects in the image
-        result = self.predict(cv_img, conf=self.conf)
-        
-        # get the detection data
-        conf, cls_id, cls_name, xyxy = self.get_detection(results=result)
-        # Annotate the image with bounding boxes
-        
-        if cls_id is not None:
-            cv_img_with_bbox = self.plot_bbox(cv_img,xyxy,cls_name,conf)
-        else:
-            cv_img_with_bbox = cv_img
-
-        # Convert the annotated OpenCV image to ROS image message and to Detection2D message
-        header = Header()
-        header.frame_id = data.header.frame_id
-        header.stamp = self.get_clock().now().to_msg()
-        
-        img_msg = self.cv_bridge.cv2_to_imgmsg(cv_img_with_bbox)
-        detection_msg = self.set_detection2d_msg(conf, cls_name, xyxy, header=header)
-        
-        # Publish the annotated image adn the detection data
-        self.publish(img_msg,detection_msg)
-
+        # publish detection data
+        self.detection_data_pub.publish(det_msg)
 
 def main(args=None):
 
     # init node
     rclpy.init(args=args)
     detect_node = StairDetectorNode()
-    
+
     # Create a SingleThreadedExecutor
     executor = SingleThreadedExecutor()
+
     # Add the node to the executor
     executor.add_node(detect_node)
     

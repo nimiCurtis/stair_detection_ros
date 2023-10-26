@@ -1,4 +1,4 @@
-/stair_detection_node:
+/stair_detection:
   ros__parameters:
     general:
       camera_topic: '/zedm/zed_node/rgb/image_rect_color'
