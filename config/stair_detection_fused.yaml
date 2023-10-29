@@ -1,0 +1,9 @@
+/**:
+    ros__parameters:
+      # allNodeCanSee: True
+      general:
+        detection_topic_in: '/zion/stair_detection/detection'
+        stair_topic_in: '/zion/stair_modeling/stair'
+        pose_topic_out: '~/pose'
+        stair_topic_out: '~/stair'
+

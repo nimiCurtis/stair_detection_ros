@@ -2,6 +2,7 @@
 
 # Standard library imports
 import os
+import re
 
 # Related third party imports
 import cv2
@@ -41,39 +42,42 @@ class StairDetectorNode(Node):
     """
 
     def __init__(self):
-
-        super().__init__("stair_detection")  #Nodes name must be equal to the node
+        # super().__init__()  
+        super().__init__("stair_detection")  
         self.get_logger().info(f"****************************************")
         self.get_logger().info(f"      {self.get_name()} is running     ")
         self.get_logger().info(f"****************************************")
 
-        # load parameters
+        # Loading parameters
         params = self.init_params()
         
-        # init cd bridge
+        # Initializing cd bridge
         self.cv_bridge = CvBridge()
 
-        # init publishers and subscribers
+        # Initializing publishers and subscribers
         imgSubQos = QoSProfile(depth=10)
         self.image_sub  = self.create_subscription(Image, 
-                                                params['camera_topic'], 
+                                                params.get('camera_topic'), 
                                                 self.image_callback,
                                                 imgSubQos)
         
         detQos = QoSProfile(depth=10)
         self.detection_data_pub = self.create_publisher(Detection2D,
-                                                params['detection_topic_data'],
+                                                params.get('detection_topic_data'),
                                                 detQos)
 
         imgPubQos = QoSProfile(depth=10)
         self.detection_img_pub = self.create_publisher(Image,
-                                                params['detection_topic_img'],
+                                                params.get('detection_topic_img'),
                                                 imgPubQos)
         
-        # load detection model
-        device, model_path, use_trt = params["device"], params["model_path"], params["use_trt"]
+        # Loading detection model
+        device, model_path, use_trt = params.get('device'), params.get('model_path'), params.get('use_trt')
         self.model = self.load_model(model_path,device,trt=use_trt)
-        self.conf = params["conf"]
+        self.conf = params.get('conf')
+        # Extract image size from model name if it exists , set 320 to default
+        match = re.search(r'imgsz(\d+)', model_path)
+        self.imgsz = int(match.group(1)) if match else 320
 
     def init_params(self):
         """
@@ -83,32 +87,35 @@ class StairDetectorNode(Node):
         :rtype: dict
         """
 
-        self.get_logger().info('Parameters: ')
+        self.get_logger().info('************   Parameters   ************')
         
-        camera_topic = self.declare_parameter('camera_topic', '/zedm/zed_node/rgb/image_rect_color') ## <<< continue
-        camera_topic = self.get_parameter('camera_topic').get_parameter_value().string_value
+        camera_topic = self.declare_parameter('general.camera_topic',
+                                            '/zedm/zed_node/rgb/image_rect_color')
+        camera_topic = self.get_parameter('general.camera_topic').get_parameter_value().string_value
         self.get_logger().info('camera_topic: %s' % camera_topic)
         
-        detection_topic_data = self.declare_parameter('detection_topic_data', '/zion/stair_detection/detection') ## <<< continue
-        detection_topic_data = self.get_parameter('detection_topic_data').get_parameter_value().string_value
+        detection_topic_data = self.declare_parameter('general.detection_topic_data',
+                                                    '/zion/stair_detection/detection')
+        detection_topic_data = self.get_parameter('general.detection_topic_data').get_parameter_value().string_value
         self.get_logger().info('detection_topic_data: %s' % detection_topic_data)
         
-        detection_topic_img = self.declare_parameter('detection_topic_img', '/zion/stair_detection/detection_image') ## <<< continue
-        detection_topic_img = self.get_parameter('detection_topic_img').get_parameter_value().string_value
+        detection_topic_img = self.declare_parameter('general.detection_topic_img',
+                                                    '/zion/stair_detection/detection_image')
+        detection_topic_img = self.get_parameter('general.detection_topic_img').get_parameter_value().string_value
         self.get_logger().info('detection_topic_img: %s' % detection_topic_img)
         
         device = self.declare_parameter('model.device', 'cuda')
         device = self.get_parameter('model.device').get_parameter_value().string_value
         self.get_logger().info('device: %s' % device)
         
-        model_name = self.declare_parameter('model.model_path', 'best')
-        model_name = self.get_parameter('model.model_path').get_parameter_value().string_value
+        model_name = self.declare_parameter('model.model_name', 'best')
+        model_name = self.get_parameter('model.model_name').get_parameter_value().string_value
         
         use_trt = self.declare_parameter('model.trt', False)
         use_trt = self.get_parameter('model.trt').get_parameter_value().bool_value
         self.get_logger().info('trt: %s' % use_trt)
 
-        
+
         model_name = model_name +'.engine' if use_trt else model_name +'.pt' 
         model_path = os.path.join(
             get_package_share_directory('stair_detection_ros'),
@@ -168,9 +175,9 @@ class StairDetectorNode(Node):
         cv_img = self.cv_bridge.imgmsg_to_cv2(data, desired_encoding="bgr8")
         
         # Predict objects in the image
-        result = self.predict(cv_img, conf=self.conf)
+        result = self.predict(cv_img, imgsz=self.imgsz, conf=self.conf)
 
-        # get the detection data
+        # Get the detection data
         conf, cls_id, cls_name, xyxy = self.get_detection(results=result)
         
         # Annotate the image with bounding boxes
@@ -190,12 +197,14 @@ class StairDetectorNode(Node):
         # Publish the annotated image adn the detection data
         self.publish(img_msg,detection_msg)
 
-    def predict(self, frame, conf=0.75)->Results:
+    def predict(self, frame, imgsz, conf=0.75)->Results:
         """
         Predicts objects in the given frame using the loaded YOLO model.
         
-        :param frame: Image/frame for object detection
+        :param frame: image/frame for object detection
         :type frame: ndarray
+        :param imgsz: image size 
+        :type imgsz: int
         :param conf: prediction confidence threshold
         :type conf: float
         :return: Detection result from the YOLO model
@@ -203,8 +212,8 @@ class StairDetectorNode(Node):
         """
         # Predict objects in the frame using the model
         results = self.model.predict(source=frame,
-                                    imgsz=320,
-                                    verbose=True,
+                                    imgsz=imgsz,
+                                    verbose=False,
                                     show=False,
                                     conf=conf)
         return results[0]
@@ -333,15 +342,12 @@ class StairDetectorNode(Node):
         :type det_msg: Detection2D
         """
         
-        # publish image with bbox
         self.detection_img_pub.publish(img_msg)
-        
-        # publish detection data
         self.detection_data_pub.publish(det_msg)
 
 def main(args=None):
 
-    # init node
+    # Initializing Node
     rclpy.init(args=args)
     detect_node = StairDetectorNode()
 

@@ -1,18 +1,15 @@
-zion:
-  stair_detection:
+/**:
     ros__parameters:
+      # allNodeCanSee: True
       general:
         camera_topic: '/zedm/zed_node/rgb/image_rect_color'
-        detection_topic_img: '/zion/stair_detection/detection_image'
-        detection_topic_data: '/zion/stair_detection/detection'
+        detection_topic_img: '~/detection_image'
+        detection_topic_data: '~/detection'
+        
 
       model: 
         device: cuda          # cuda | cpu
-        model_path: 'best'    # relative path from env_clf_ros dir to the models dir
+        model_name: 'yolov8_v6i_imgsz320_2023-10-22_15-15-14_best'    # name of the model file in the models dir (without the .<format>)
         trt: False            # use TensorRT
         conf: 0.7             # confidence threshold
                               # model will consider only predictions that are at least as the conf param and higher. 
-
-/**:
-    ros__parameters:
-      allNodeCanSee: True

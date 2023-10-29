@@ -3,11 +3,13 @@ from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import SetEnvironmentVariable
 from launch_ros.actions import Node
+from launch.substitutions import LaunchConfiguration
 
 def generate_launch_description():
 
     # define ns as robot name.
-    robot = 'zion'
+    robot = LaunchConfiguration('robot',default="zion")
+    node_name = LaunchConfiguration('node_name',default="stair_detection")
     
     # get parameters from yaml    
     config = os.path.join(
@@ -16,12 +18,13 @@ def generate_launch_description():
         'stair_detection.yaml'
         )
 
-    # set launch os stair detector
+    # set launch of stair detector
     stair_detection_node =   Node(
             package='stair_detection_ros',
             executable='stair_detection',
-            output='screen',
+            name=node_name,
             namespace=robot,
+            output='screen',
             parameters=[config]
             )
 
