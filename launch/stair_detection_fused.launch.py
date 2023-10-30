@@ -62,7 +62,6 @@ def generate_launch_description():
         #                 )
         #         ]),
         # )
-        
 
         # start the nodes after 5 secs
         on_bringup_time = TimerAction(
