@@ -9,7 +9,9 @@
 
       model: 
         device: cuda          # cuda | cpu
-        model_name: 'yolov8_v6i_imgsz320_2023-10-22_15-15-14_best'    # name of the model file in the models dir (without the .<format>)
-        trt: False            # use TensorRT
+        #model_name: 'best' # name of the model file in the models dir (without the .<format>)
+        
+        model_name: yolov8_v6i_imgsz320_2023-11-01_15-57-08_best
+        trt: False           # use TensorRT
         conf: 0.7             # confidence threshold
                               # model will consider only predictions that are at least as the conf param and higher. 
