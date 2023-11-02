@@ -321,6 +321,8 @@ class StairDetectorNode(Node):
         if xyxy is not None:
             detection.bbox.size_x = float(abs(xyxy[0] - xyxy[2]))
             detection.bbox.size_y = float(abs(xyxy[1] - xyxy[3]))
+            detection.bbox.center.x = float(xyxy[0] + abs(xyxy[0] - xyxy[2])/2)
+            detection.bbox.center.y = float(xyxy[1] + abs(xyxy[1] - xyxy[3])/2)
         
         # Initialize an ObjectHypothesis object to store detected class and its confidence
         if (conf!=0.) and (cls_id is not None):
