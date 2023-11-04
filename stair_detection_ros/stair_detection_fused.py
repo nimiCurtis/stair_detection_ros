@@ -123,7 +123,7 @@ class StairDetectionFused(Node):
         # cur_time = time.time()
         # self.get_logger().info(f"dt = {cur_time-self.prev_time}")
         # self.prev_time = cur_time
-                
+
         pose_msg = PoseStamped()
         stair_fused_msg = StairDetStamped()
         header = Header()
