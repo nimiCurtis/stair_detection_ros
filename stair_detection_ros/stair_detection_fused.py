@@ -129,7 +129,7 @@ class StairDetectionFused(Node):
         pose_msg = PoseStamped()
         stair_fused_msg = StairDetStamped()
         header = Header()
-        header.frame_id = detection_msg.header.frame_id
+        header.frame_id = stair_msg.header.frame_id
         header.stamp = self.get_clock().now().to_msg()
         
         stair_fused_msg.header = header
