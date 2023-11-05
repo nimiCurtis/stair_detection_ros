@@ -213,7 +213,7 @@ class StairDetectorNode(Node):
         # Predict objects in the frame using the model
         results = self.model.predict(source=frame,
                                     imgsz=[imgsz,imgsz],
-                                    verbose=True,
+                                    verbose=False,
                                     show=False,
                                     conf=conf)
         return results[0]

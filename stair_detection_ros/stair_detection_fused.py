@@ -5,7 +5,8 @@ import time
 
 # ROS application/library specific imports
 import rclpy
-from rclpy.node import Node, QoSProfile
+from rclpy.qos import QoSProfile, QoSReliabilityPolicy
+from rclpy.node import Node
 from rclpy.executors import SingleThreadedExecutor
 from std_msgs.msg import Header
 from vision_msgs.msg import Detection2D
@@ -46,13 +47,14 @@ class StairDetectionFused(Node):
                                                     params.get('detection_topic_in'),
                                                     qos_profile=detSubQos)
         StairSubQos = QoSProfile(depth=10)
+        # StairSubQos.reliability = QoSReliabilityPolicy.BEST_EFFORT
         self.stair_sub = message_filters.Subscriber(self, StairStamped,
                                                     params.get('stair_topic_in'),
                                                     qos_profile=StairSubQos)
         
         # Initializing publishers for fused detection and pose
         detPubQos = QoSProfile(depth=10)
-        self.fused_det_pub = self.create_publisher(StairStamped,
+        self.fused_det_pub = self.create_publisher(StairDetStamped,
                                                 params.get('stair_topic_out'),
                                                 detPubQos)
         
@@ -119,7 +121,7 @@ class StairDetectionFused(Node):
             detection_msg (Detection2D): The message from the detection topic.
             stair_msg (StairStamped): The message from the stair topic.
         """
-        # self.get_logger().info("sync")
+        # self.get_logger().info("sync!!!!!!!!!")
         # cur_time = time.time()
         # self.get_logger().info(f"dt = {cur_time-self.prev_time}")
         # self.prev_time = cur_time
@@ -137,12 +139,15 @@ class StairDetectionFused(Node):
         if len(detection_msg.results) == 1:
             result = detection_msg.results[0]
             bbox = detection_msg.bbox
-            if result.id == stair_msg.stair.id:
+            if (((result.id == "SSD") and (stair_msg.stair.id == 1)) 
+                or ((result.id == "SSA") and (stair_msg.stair.id == 0))):
+                
                 stair_fused_msg.stair = stair_msg.stair
                 stair_fused_msg.bbox = bbox
                 pose_msg.pose = stair_fused_msg.stair.pose
                 self.fused_det_pub.publish(stair_fused_msg)
                 self.fused_pose_pub.publish(pose_msg)
+
 
 def main(args=None):
 

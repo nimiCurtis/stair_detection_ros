@@ -2,7 +2,7 @@
 import os
 from ament_index_python import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import IncludeLaunchDescription, TimerAction
+from launch.actions import IncludeLaunchDescription, TimerAction, SetEnvironmentVariable
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import PathJoinSubstitution
 from launch_ros.actions import Node
@@ -53,26 +53,30 @@ def generate_launch_description():
         )
 
         # stair modeling node
-        # stair_modeling_launch = IncludeLaunchDescription(
-        #         launch_description_source=PythonLaunchDescriptionSource([
-        #                 PathJoinSubstitution( 
-        #                         [FindPackageShare("stair_modeling_ros"),
-        #                                 "launch",
-        #                                 "stair_modeling.launch.py"]
-        #                 )
-        #         ]),
-        # )
+        stair_modeling_launch = IncludeLaunchDescription(
+                launch_description_source=PythonLaunchDescriptionSource([
+                        PathJoinSubstitution( 
+                                [FindPackageShare("stair_modeling"),
+                                        "launch",
+                                        "stair_modeling.launch.py"]
+                        )
+                ]),
+                launch_arguments={
+                        'robot': robot,
+                        'node_name': stair_modeling_node_name
+                }.items()
+        )
 
-        # start the nodes after 5 secs
+        # start the nodes after 6 secs
         on_bringup_time = TimerAction(
-                period=5.0,
-                actions=[stair_detection_launch]#,
-                        #stair_modeling_launch]
+                period=6.0,
+                actions=[stair_detection_launch,
+                        stair_modeling_launch]
         )
         
         # start the fused node after 10 secs
         fused = TimerAction(
-                period=10.0,
+                period=15.0,
                 actions=[
                         Node(
                                 package=packge_name,
@@ -83,7 +87,7 @@ def generate_launch_description():
                                 parameters=[config,
                                         { 
                                         'detection_topic_in': '/'+robot+'/'+stair_det_node_name+'/detection',
-                                        'stair_topic_in': '/'+robot+'/'+stair_modeling_node_name+'/detection'
+                                        'stair_topic_in': '/'+robot+'/'+stair_modeling_node_name+'/stair'
                                         }]
                         )
                 ]
@@ -91,6 +95,8 @@ def generate_launch_description():
 
 
         return LaunchDescription([
+                SetEnvironmentVariable(name='RCUTILS_COLORIZED_OUTPUT', value='1'),
+                SetEnvironmentVariable(name='RCUTILS_CONSOLE_OUTPUT_FORMAT', value='{time} [{name}] [{severity}] {message}'),
                 zion_zed_launch,
                 on_bringup_time,
                 fused
