@@ -63,20 +63,25 @@ def generate_launch_description():
                 ]),
                 launch_arguments={
                         'robot': robot,
-                        'node_name': stair_modeling_node_name
+                        'node_name': stair_modeling_node_name,
+                        'debug': 'true'
                 }.items()
         )
 
         # start the nodes after 6 secs
-        on_bringup_time = TimerAction(
+        stair_detection_launch_timer = TimerAction(
                 period=6.0,
-                actions=[stair_detection_launch,
-                        stair_modeling_launch]
+                actions=[stair_detection_launch]
+        )
+        
+        stair_modeling_launch_timer = TimerAction(
+                period=15.0,
+                actions=[stair_modeling_launch]
         )
         
         # start the fused node after 10 secs
         fused = TimerAction(
-                period=15.0,
+                period=1.0,
                 actions=[
                         Node(
                                 package=packge_name,
@@ -97,7 +102,8 @@ def generate_launch_description():
         return LaunchDescription([
                 SetEnvironmentVariable(name='RCUTILS_COLORIZED_OUTPUT', value='1'),
                 SetEnvironmentVariable(name='RCUTILS_CONSOLE_OUTPUT_FORMAT', value='{time} [{name}] [{severity}] {message}'),
-                zion_zed_launch,
-                on_bringup_time,
+                # zion_zed_launch,
+                # stair_detection_launch_timer,
+                # stair_modeling_launch_timer
                 fused
         ])
