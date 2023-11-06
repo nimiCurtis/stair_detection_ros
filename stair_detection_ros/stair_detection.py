@@ -215,6 +215,8 @@ class StairDetectorNode(Node):
                                     imgsz=[imgsz,imgsz],
                                     verbose=False,
                                     show=False,
+                                    max_det=1,
+                                    #iou
                                     conf=conf)
         return results[0]
 
