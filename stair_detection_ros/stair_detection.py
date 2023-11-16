@@ -14,11 +14,13 @@ from ament_index_python.packages import get_package_share_directory
 from cv_bridge import CvBridge
 import rclpy
 from rclpy.node import Node, QoSProfile
-from rclpy.executors import SingleThreadedExecutor
+from rclpy.callback_groups import ReentrantCallbackGroup, MutuallyExclusiveCallbackGroup
+from rclpy.executors import MultiThreadedExecutor, SingleThreadedExecutor
 from std_msgs.msg import String, Header
 from sensor_msgs.msg import Image
 from vision_msgs.msg import Detection2D, ObjectHypothesisWithPose 
-
+from zion_msgs.msg import Stair
+from zion_msgs.srv import GetStair
 class StairDetectorNode(Node):
     """StairDetectorNode is a ROS2 node responsible for detecting stair ascending and descending 
     using the YOLO object detection model.
@@ -45,7 +47,7 @@ class StairDetectorNode(Node):
         # super().__init__()  
         super().__init__("stair_detection")  
         self.get_logger().info(f"****************************************")
-        self.get_logger().info(f"      {self.get_name()} is running     ")
+        self.get_logger().info(f"      {self.get_namespace()}/{self.get_name()} is running     ")
         self.get_logger().info(f"****************************************")
 
         # Loading parameters
@@ -55,11 +57,16 @@ class StairDetectorNode(Node):
         self.cv_bridge = CvBridge()
 
         # Initializing publishers and subscribers
+
+        self.group1 = MutuallyExclusiveCallbackGroup()
+        self.group2 = MutuallyExclusiveCallbackGroup()
+
         imgSubQos = QoSProfile(depth=10)
         self.image_sub  = self.create_subscription(Image, 
                                                 params.get('camera_topic'), 
                                                 self.image_callback,
-                                                imgSubQos)
+                                                imgSubQos,
+                                                callback_group=self.group1)
         
         detQos = QoSProfile(depth=10)
         self.detection_data_pub = self.create_publisher(Detection2D,
@@ -78,6 +85,25 @@ class StairDetectorNode(Node):
         # Extract image size from model name if it exists , set 320 to default
         match = re.search(r'imgsz(\d+)', model_path)
         self.imgsz = int(match.group(1)) if match else 320
+
+        self.is_detected = False
+
+        self.client = self.create_client(GetStair,
+                                        f'{self.get_namespace()}/stair_modeling/get_stair',
+                                        callback_group=self.group1)
+
+        # checks once per second if a Service matching the type and name of the Client is available.
+        while not self.client.wait_for_service(timeout_sec=1.0):
+            # if it is not available, a message is displayed
+            self.get_logger().info('service not available, waiting again...')
+
+        # create an GetStair request
+        self.req = GetStair.Request()
+        
+        self.img_msg = Image()
+        self.detection_msg = Detection2D()
+        
+        # self.run()
 
     def init_params(self):
         """
@@ -162,6 +188,41 @@ class StairDetectorNode(Node):
             model.to(device)
             
         return model
+    
+    def run(self):
+        
+        if self.is_detected:
+            self.req.id = self.detection_msg.results[0].id
+            # self.send_request()
+            
+
+
+            res = self.send_request()
+            self.get_logger().info(f'Recieved response! success: {res.success}')
+
+            # if self.future.done():
+            #     try:
+            #     # checks the future for a response from the Service
+            #     # while the system is running. 
+            #     # If the Service has sent a response, the result will be written
+            #     # to a log message.
+            #         response = self.future.result()
+            #         self.get_logger().info(
+            #             'Service call done msg recievd')
+            #     except Exception as e:
+            #         # Display the message on the console
+            #         self.get_logger().info(
+            #             'Service call failed %r' % (e,))
+            #     else:
+            #         # Display the message on the console
+            #         self.get_logger().info(
+            #             'Server still works' ) 
+            # else:
+            #     self.get_logger().info(f'here')
+
+            # Publish the annotated image adn the detection data
+        self.publish(self.img_msg,self.detection_msg)
+        pass
 
     def image_callback(self, data:Image):
         """
@@ -181,7 +242,9 @@ class StairDetectorNode(Node):
         conf, cls_id, cls_name, xyxy = self.get_detection(results=result)
         
         # Annotate the image with bounding boxes
-        if cls_id is not None:
+        self.is_detected = True if cls_id is not None else False
+        
+        if self.is_detected:
             cv_img_with_bbox = self.plot_bbox(cv_img, xyxy, cls_name, conf)
         else:
             cv_img_with_bbox = cv_img
@@ -191,11 +254,39 @@ class StairDetectorNode(Node):
         header.frame_id = data.header.frame_id
         header.stamp = self.get_clock().now().to_msg()
         
-        img_msg = self.cv_bridge.cv2_to_imgmsg(cv_img_with_bbox)
-        detection_msg = self.set_detection2d_msg(conf, cls_name, xyxy, header=header)
+        self.img_msg = self.cv_bridge.cv2_to_imgmsg(cv_img_with_bbox)
+        self.detection_msg = self.set_detection2d_msg(conf, cls_name, xyxy, header=header)
         
-        # Publish the annotated image adn the detection data
-        self.publish(img_msg,detection_msg)
+        if self.is_detected:
+            self.req.id = self.detection_msg.results[0].id
+            # self.send_request()
+
+            res = self.send_request()
+            self.get_logger().info(f'Recieved response! success: {res.success}')
+
+            # if self.future.done():
+            #     try:
+            #     # checks the future for a response from the Service
+            #     # while the system is running. 
+            #     # If the Service has sent a response, the result will be written
+            #     # to a log message.
+            #         response = self.future.result()
+            #         self.get_logger().info(
+            #             'Service call done msg recievd')
+            #     except Exception as e:
+            #         # Display the message on the console
+            #         self.get_logger().info(
+            #             'Service call failed %r' % (e,))
+            #     else:
+            #         # Display the message on the console
+            #         self.get_logger().info(
+            #             'Server still works' ) 
+            # else:
+            #     self.get_logger().info(f'here')
+
+            # Publish the annotated image adn the detection data
+        self.publish(self.img_msg,self.detection_msg)
+
 
     def predict(self, frame, imgsz, conf=0.75)->Results:
         """
@@ -319,15 +410,15 @@ class StairDetectorNode(Node):
         # Set the header information
         if header is not None: detection.header = header 
 
-        # Calculate and set the bounding box dimensions
-        if xyxy is not None:
+        if self.is_detected:
+            
+            # Calculate and set the bounding box dimensions
             detection.bbox.size_x = float(abs(xyxy[0] - xyxy[2]))
             detection.bbox.size_y = float(abs(xyxy[1] - xyxy[3]))
             detection.bbox.center.x = float(xyxy[0] + abs(xyxy[0] - xyxy[2])/2)
             detection.bbox.center.y = float(xyxy[1] + abs(xyxy[1] - xyxy[3])/2)
         
-        # Initialize an ObjectHypothesis object to store detected class and its confidence
-        if (conf!=0.) and (cls_id is not None):
+            # Initialize an ObjectHypothesis object to store detected class and its confidence
             hypo = ObjectHypothesisWithPose()
             hypo.id = str(cls_id)
             hypo.score = float(conf)
@@ -348,6 +439,15 @@ class StairDetectorNode(Node):
         
         self.detection_img_pub.publish(img_msg)
         self.detection_data_pub.publish(det_msg)
+    
+    def send_request(self)->GetStair.Response():
+        # send the request
+        self.future = self.client.call_async(self.req)
+        rclpy.spin_until_future_complete(self, self.future)
+        return self.future.result()
+
+
+
 
 def main(args=None):
 
@@ -356,7 +456,7 @@ def main(args=None):
     detect_node = StairDetectorNode()
 
     # Create a SingleThreadedExecutor
-    executor = SingleThreadedExecutor()
+    executor = MultiThreadedExecutor(num_threads=4)
 
     # Add the node to the executor
     executor.add_node(detect_node)
