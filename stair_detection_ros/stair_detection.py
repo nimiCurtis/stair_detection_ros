@@ -45,7 +45,7 @@ class StairDetectorNode(Node):
         # super().__init__()  
         super().__init__("stair_detection")  
         self.get_logger().info(f"****************************************")
-        self.get_logger().info(f"      {self.get_name()} is running     ")
+        self.get_logger().info(f"      {self.get_namespace()}/{self.get_name()} is running     ")
         self.get_logger().info(f"****************************************")
 
         # Loading parameters
@@ -78,6 +78,8 @@ class StairDetectorNode(Node):
         # Extract image size from model name if it exists , set 320 to default
         match = re.search(r'imgsz(\d+)', model_path)
         self.imgsz = int(match.group(1)) if match else 320
+        
+        self.is_detected = False
 
     def init_params(self):
         """
@@ -180,8 +182,10 @@ class StairDetectorNode(Node):
         # Get the detection data
         conf, cls_id, cls_name, xyxy = self.get_detection(results=result)
         
+        self.is_detected = True if cls_id is not None else False
+        
         # Annotate the image with bounding boxes
-        if cls_id is not None:
+        if self.is_detected:
             cv_img_with_bbox = self.plot_bbox(cv_img, xyxy, cls_name, conf)
         else:
             cv_img_with_bbox = cv_img
@@ -319,15 +323,15 @@ class StairDetectorNode(Node):
         # Set the header information
         if header is not None: detection.header = header 
 
-        # Calculate and set the bounding box dimensions
-        if xyxy is not None:
+        if self.is_detected:
+            
+            # Calculate and set the bounding box dimensions
             detection.bbox.size_x = float(abs(xyxy[0] - xyxy[2]))
             detection.bbox.size_y = float(abs(xyxy[1] - xyxy[3]))
             detection.bbox.center.x = float(xyxy[0] + abs(xyxy[0] - xyxy[2])/2)
             detection.bbox.center.y = float(xyxy[1] + abs(xyxy[1] - xyxy[3])/2)
         
-        # Initialize an ObjectHypothesis object to store detected class and its confidence
-        if (conf!=0.) and (cls_id is not None):
+            # Initialize an ObjectHypothesis object to store detected class and its confidence
             hypo = ObjectHypothesisWithPose()
             hypo.id = str(cls_id)
             hypo.score = float(conf)
