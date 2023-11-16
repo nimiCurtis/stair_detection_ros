@@ -34,9 +34,9 @@ class StairDetectionFused(Node):
     
     def __init__(self):
         super().__init__("stair_detection_fused")  # Node's name must be equal to the node's class name
-        self.get_logger().info("****************************************")
-        self.get_logger().info(f"      {self.get_name()} is running     ")
-        self.get_logger().info("****************************************")
+        self.get_logger().info(f"****************************************")
+        self.get_logger().info(f"      {self.get_namespace()}/{self.get_name()} is running     ")
+        self.get_logger().info(f"****************************************")
 
         # Loading parameters
         params = self.init_params()
@@ -135,6 +135,7 @@ class StairDetectionFused(Node):
         stair_fused_msg.header = header
         pose_msg.header = header
 
+        self.get_logger().info("sync!")
         # Check if a single detection result matches with the stair model ID and publish the fused data
         if len(detection_msg.results) == 1:
             result = detection_msg.results[0]
