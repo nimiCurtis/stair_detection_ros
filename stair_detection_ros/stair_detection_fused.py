@@ -135,7 +135,6 @@ class StairDetectionFused(Node):
         stair_fused_msg.header = header
         pose_msg.header = header
 
-        self.get_logger().info("sync!")
         # Check if a single detection result matches with the stair model ID and publish the fused data
         if len(detection_msg.results) == 1:
             result = detection_msg.results[0]
