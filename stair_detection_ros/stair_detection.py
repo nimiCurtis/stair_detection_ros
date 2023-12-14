@@ -70,7 +70,7 @@ class StairDetectorNode(Node):
         self.detection_img_pub = self.create_publisher(Image,
                                                 params.get('detection_topic_img'),
                                                 imgPubQos)
-        
+
         # Loading detection model
         device, model_path, use_trt = params.get('device'), params.get('model_path'), params.get('use_trt')
         self.model = self.load_model(model_path,device,trt=use_trt)
@@ -196,7 +196,7 @@ class StairDetectorNode(Node):
         header.stamp = self.get_clock().now().to_msg()
         
         img_msg = self.cv_bridge.cv2_to_imgmsg(cv_img_with_bbox)
-        detection_msg = self.set_detection2d_msg(conf, cls_name, xyxy, header=header)
+        detection_msg = self.set_detection2d_msg(data,conf, cls_name, xyxy, header=header)
         
         # Publish the annotated image adn the detection data
         self.publish(img_msg,detection_msg)
@@ -276,8 +276,8 @@ class StairDetectorNode(Node):
         :rtype: ndarray
         """
         font = cv2.FONT_HERSHEY_SIMPLEX
-        font_scale = 1
-        font_thickness = 2
+        font_scale = 0.75
+        font_thickness = 1
 
         ## colors BGR
         color = (0, 0, 255)  # red 
@@ -302,7 +302,7 @@ class StairDetectorNode(Node):
 
         return frame
 
-    def set_detection2d_msg(self, conf=0., cls_id=None, xyxy=None, header=None)->Detection2D:
+    def set_detection2d_msg(self, image, conf=0., cls_id=None, xyxy=None, header=None)->Detection2D:
         """
         Constructs a Detection2D message using the given detection parameters.
         
@@ -337,7 +337,8 @@ class StairDetectorNode(Node):
             hypo.score = float(conf)
             # Add the hypothesis to the Detection2D message
             detection.results.append(hypo)
-        
+            detection.source_img = image
+
         return detection
 
     def publish(self, img_msg:Image, det_msg:Detection2D()):

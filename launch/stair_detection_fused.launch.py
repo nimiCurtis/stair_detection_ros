@@ -101,7 +101,7 @@ def generate_launch_description():
 
         return LaunchDescription([
                 SetEnvironmentVariable(name='RCUTILS_COLORIZED_OUTPUT', value='1'),
-                SetEnvironmentVariable(name='RCUTILS_CONSOLE_OUTPUT_FORMAT', value='{time} [{name}] [{severity}] {message}'),
+                SetEnvironmentVariable(name='RCUTILS_CONSOLE_OUTPUT_FORMAT', value='[{time}] [{name}] [{severity}] {message}'),
                 zion_zed_launch,
                 stair_detection_launch_timer,
                 stair_modeling_launch_timer,
