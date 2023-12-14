@@ -76,7 +76,7 @@ class StairDetectionFused(Node):
 
         ImagePubQos = QoSProfile(depth=10)
         self.fused_image_pub = self.create_publisher(Image,
-                                                    'zion/stair_detection_fused/detection_image',
+                                                    '~/detection_image',
                                                     ImagePubQos)
         
         
