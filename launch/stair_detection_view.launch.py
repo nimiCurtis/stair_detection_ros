@@ -11,7 +11,7 @@ def generate_launch_description():
         default_value='false',
         description='Set rviz config based on fused detection&modleing node'
     )
-    
+
     if not(fused_arg):
         # get parameters from rviz config    
         config_rviz2 = os.path.join(
@@ -23,7 +23,7 @@ def generate_launch_description():
             get_package_share_directory('stair_detection_ros'),
             'rviz2',
             'stair_detection_fused.rviz')
-    
+
     # set launch of rviz node
     rviz_node = Node(
             package='rviz2',
